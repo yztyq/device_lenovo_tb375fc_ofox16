@@ -24,7 +24,6 @@ TARGET_2ND_ARCH_VARIANT := armv8-2a
 TARGET_2ND_CPU_ABI := armeabi-v7a
 TARGET_2ND_CPU_ABI2 := armeabi
 TARGET_2ND_CPU_VARIANT := generic
-TARGET_USES_64_BIT_BINDER := true
 TARGET_SUPPORTS_64_BIT_APPS := true
 TARGET_BOARD_PLATFORM := mt6897
 TARGET_BOOTLOADER_BOARD_NAME := mt8792
@@ -34,7 +33,7 @@ TARGET_BOOTLOADER_BOARD_NAME := mt8792
 # boot.img, exactly like the LineageOS tree for this tablet.
 TARGET_NO_KERNEL := true
 BOARD_BOOT_HEADER_VERSION := 4
-BOARD_PAGE_SIZE := 4096
+BOARD_KERNEL_PAGESIZE := 4096
 BOARD_HEADER_SIZE := 2128
 BOARD_KERNEL_BASE := 0x3fff8000
 BOARD_KERNEL_OFFSET := 0x00008000
@@ -67,6 +66,15 @@ BOARD_SYSTEMIMAGE_FILE_SYSTEM_TYPE := erofs
 BOARD_PRODUCTIMAGE_FILE_SYSTEM_TYPE := erofs
 BOARD_SYSTEM_EXTIMAGE_FILE_SYSTEM_TYPE := erofs
 BOARD_ODMIMAGE_FILE_SYSTEM_TYPE := erofs
+# board_config.mk:803 aborts lunch (dumpvars exit status 1) when
+# TARGET_COPY_OUT_VENDOR_DLKM is 'vendor_dlkm' but neither
+# BOARD_PREBUILT_VENDOR_DLKMIMAGE nor BOARD_VENDOR_DLKMIMAGE_FILE_SYSTEM_TYPE
+# is set; odm_dlkm and system_dlkm are checked the same way. Recovery never
+# builds these images, so only the variable's presence matters and ext4
+# keeps erofs build tools out of the dependency chain.
+BOARD_VENDOR_DLKMIMAGE_FILE_SYSTEM_TYPE := ext4
+BOARD_ODM_DLKMIMAGE_FILE_SYSTEM_TYPE := ext4
+BOARD_SYSTEM_DLKMIMAGE_FILE_SYSTEM_TYPE := ext4
 TARGET_USES_EROFS := true
 TARGET_COPY_OUT_VENDOR := vendor
 TARGET_COPY_OUT_PRODUCT := product
