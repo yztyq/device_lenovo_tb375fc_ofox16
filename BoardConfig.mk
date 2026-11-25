@@ -69,12 +69,16 @@ BOARD_ODMIMAGE_FILE_SYSTEM_TYPE := erofs
 # board_config.mk:803 aborts lunch (dumpvars exit status 1) when
 # TARGET_COPY_OUT_VENDOR_DLKM is 'vendor_dlkm' but neither
 # BOARD_PREBUILT_VENDOR_DLKMIMAGE nor BOARD_VENDOR_DLKMIMAGE_FILE_SYSTEM_TYPE
-# is set; odm_dlkm and system_dlkm are checked the same way. Recovery never
-# builds these images, so only the variable's presence matters and ext4
-# keeps erofs build tools out of the dependency chain.
+# is set; odm_dlkm is checked the same way. Recovery never builds these images,
+# so only the variable's presence matters and ext4 keeps erofs build tools out
+# of the dependency chain.
 BOARD_VENDOR_DLKMIMAGE_FILE_SYSTEM_TYPE := ext4
 BOARD_ODM_DLKMIMAGE_FILE_SYSTEM_TYPE := ext4
-BOARD_SYSTEM_DLKMIMAGE_FILE_SYSTEM_TYPE := ext4
+# No BOARD_SYSTEM_DLKMIMAGE_* here on purpose: this tablet has no separate
+# system_dlkm partition (absent from the super main partition list and from the
+# stock fstab). Setting it makes board_config.mk:906 abort with
+# "TARGET_COPY_OUT_SYSTEM_DLKM must be set to system_dlkm image", because
+# TARGET_COPY_OUT_SYSTEM_DLKM defaults to $(TARGET_COPY_OUT_SYSTEM)/dlkm.
 TARGET_USES_EROFS := true
 TARGET_COPY_OUT_VENDOR := vendor
 TARGET_COPY_OUT_PRODUCT := product
