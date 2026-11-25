@@ -39,10 +39,10 @@ jobs:
           free -h
           SWAP_KB=$(awk '/^SwapTotal/ {print $2}' /proc/meminfo)
           echo "existing swap: ${SWAP_KB:-0} kB"
-          if [ "${SWAP_KB:-0}" -lt 8000000 ]; then
+          if [ "${SWAP_KB:-0}" -lt 10000000 ]; then
             sudo swapoff -a || true
             sudo rm -f /swapfile || true
-            sudo fallocate -l 8G /swapfile || sudo dd if=/dev/zero of=/swapfile bs=1M count=8192 status=none || true
+            sudo fallocate -l 10G /swapfile || sudo dd if=/dev/zero of=/swapfile bs=1M count=10240 status=none || true
             sudo chmod 600 /swapfile || true
             sudo mkswap /swapfile || true
             sudo swapon /swapfile || true
@@ -111,6 +111,12 @@ jobs:
           cd ${{ github.workspace }}/fox
           export ALLOW_MISSING_DEPENDENCIES=true
           export LC_ALL=C
+          # The runner's 15 GB cgroup OOM-kills soong_build (13.4 GB anon-rss,
+          # see the TERM trap dmesg in the TWRP repo) while it parses Android.bp;
+          # the kill surfaces as "runner lost communication". soong_build is Go,
+          # so bound its heap and make the GC work harder.
+          export GOMEMLIMIT=8GiB
+          export GOGC=25
           source build/envsetup.sh
           . device/lenovo/tb375fc/vendorsetup.sh
           lunch twrp_tb375fc-bp2a-eng
@@ -120,9 +126,11 @@ jobs:
           export _JAVA_OPTIONS="-Xmx3g"
           ( while true; do sleep 180; echo "[heartbeat $(date -u)] freeRoot=$(df -h / | awk 'NR==2{print $4}') mem=$(free -m | awk '/^Mem:/{print $3"/"$2"MB"}') swap=$(free -m | awk '/^Swap:/{print $3"/"$2"MB"}')"; done ) &
           HB=$!
+          trap 'echo "== trapped TERM/INT =="; free -h || true; df -h / || true; (dmesg 2>/dev/null || sudo dmesg 2>/dev/null) | tail -80 || true; exit 143' TERM INT
           set -o pipefail
           set +e
-          mka vendorbootimage -j"$(nproc --all)" 2>&1 | tee build.log
+          # -j2 instead of -j4: halve the peak memory of the ninja fan-out.
+          mka vendorbootimage -j2 2>&1 | tee build.log
           RC=$?
           kill $HB 2>/dev/null || true
           df -h /
