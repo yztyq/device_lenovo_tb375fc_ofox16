@@ -1,0 +1,3 @@
+ro.twrp.target.devices=tb375fc
+ro.twrp.sar=true
+ro.orangefox.build=tb375fc-ofox16
