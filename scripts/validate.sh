@@ -49,7 +49,7 @@ done
 sect "boot image geometry (must equal the stock vendor_boot header)"
 has_var BoardConfig.mk TARGET_NO_KERNEL 'true'
 has_var BoardConfig.mk BOARD_BOOT_HEADER_VERSION '4'
-has_var BoardConfig.mk BOARD_PAGE_SIZE '4096'
+has_var BoardConfig.mk BOARD_KERNEL_PAGESIZE '4096'
 has_var BoardConfig.mk BOARD_HEADER_SIZE '2128'
 has_var BoardConfig.mk BOARD_KERNEL_BASE '0x3fff8000'
 has_var BoardConfig.mk BOARD_RAMDISK_OFFSET '0x26f08000'
