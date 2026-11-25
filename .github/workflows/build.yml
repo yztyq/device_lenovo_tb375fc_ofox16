@@ -84,6 +84,20 @@ jobs:
           repo sync -c -j"$(nproc --all)" --force-sync --no-clone-bundle --no-tags --quiet
           df -h /
 
+      - name: Drop .repo to free disk
+        run: |
+          # fox_16.0 checks out ~85 GB, and the vendor_boot build then writes
+          # 30-40 GB of out/. Runs #5 and #6 both died silent in the middle of
+          # `mka` (no log was ever uploaded), which on a 146 GB runner points at
+          # the disk filling up. Nothing after this step needs repo metadata, so
+          # drop it and hand the space to out/.
+          cd ${{ github.workspace }}/fox
+          du -sh .repo 2>/dev/null || true
+          rm -rf .repo
+          rm -rf out/.repo* 2>/dev/null || true
+          df -h /
+          echo "free space above is what out/ has to live in"
+
       - name: Place device tree
         run: |
           rm -rf ${{ github.workspace }}/fox/device/lenovo/tb375fc
