@@ -7,8 +7,9 @@ on:
         description: 'optional: tag to publish a pre-release'
         required: false
         default: ''
-  push:
-    branches: [ main, fox_16.0 ]
+  # Full builds are manual-only on purpose: fox_16.0 Sync needs ~85 GB and a
+  # GitHub-hosted runner has ~40 GB, so a push must not burn a run on it.
+  # Push-triggered jobs live in validate.yml instead.
 
 jobs:
   build:

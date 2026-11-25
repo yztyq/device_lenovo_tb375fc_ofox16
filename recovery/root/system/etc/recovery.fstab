@@ -1,31 +1,27 @@
-# TWRP recovery fstab for TB375FC (Lenovo Xiaoxin Pad Pro 12.7 2025)
-# Generated from the stock ZUXOS 1.1.04.287 first-stage fstab.
-# Only AVB / first-stage-only flags were removed; the encryption flags are
-# kept exactly as the ROM declares them, because TWRP reads them to decide
-# which FBE variant to use.
-
-system /system erofs ro wait,slotselect_keys=/avb/q-gsi.avbpubkey:/avb/r-gsi.avbpubkey:/avb/s-gsi.avbpubkey
-system /system ext4 ro wait,slotselect_keys=/avb/q-gsi.avbpubkey:/avb/r-gsi.avbpubkey:/avb/s-gsi.avbpubkey
-system_ext /system_ext erofs ro wait,slotselect_keys=/avb/q-gsi.avbpubkey:/avb/r-gsi.avbpubkey:/avb/s-gsi.avbpubkey
-system_ext /system_ext ext4 ro wait,slotselect_keys=/avb/q-gsi.avbpubkey:/avb/r-gsi.avbpubkey:/avb/s-gsi.avbpubkey
-vendor /vendor erofs ro wait,slotselect
-vendor /vendor ext4 ro wait,slotselect
-product /product erofs ro wait,slotselect
-product /product ext4 ro wait,slotselect
-vendor_dlkm /vendor_dlkm erofs ro wait,slotselect
-vendor_dlkm /vendor_dlkm ext4 ro wait,slotselect
-odm_dlkm /odm_dlkm erofs ro wait,slotselect
-odm_dlkm /odm_dlkm ext4 ro wait,slotselect
-system_dlkm /system_dlkm erofs ro wait,slotselect
-system_dlkm /system_dlkm ext4 ro wait,slotselect
-/dev/block/by-name/metadata /metadata f2fs noatime,nosuid,nodev,discard wait,formattable
-/dev/block/by-name/userdata /data f2fs noatime,nosuid,nodev,discard,noflush_merge,fsync_mode=nobarrier,reserve_root=134217,resgid=1065,inlinecrypt wait,formattable,quota,latemount,resize,reservedsize=128m,checkpoint=fs,fileencryption=aes-256-xts:aes-256-cts:v2+inlinecrypt_optimized,keydirectory=/metadata/vold/metadata_encryption,fsverity
-/dev/block/by-name/protect1 /mnt/vendor/protect_f ext4 noatime,nosuid,nodev,noauto_da_alloc,commit=1,nodelalloc wait,formattable
-/dev/block/by-name/protect2 /mnt/vendor/protect_s ext4 noatime,nosuid,nodev,noauto_da_alloc,commit=1,nodelalloc wait,formattable
-/dev/block/by-name/nvdata /mnt/vendor/nvdata ext4 noatime,nosuid,nodev,noauto_da_alloc,commit=1,nodelalloc wait,formattable
-/dev/block/by-name/nvcfg /mnt/vendor/nvcfg ext4 noatime,nosuid,nodev,noauto_da_alloc,commit=1,nodelalloc wait,formattable
-/dev/block/by-name/lenovocust /lenovocust ext4 noatime,nosuid,nodev,noauto_da_alloc,commit=1,nodelalloc wait,formattable
-/dev/block/by-name/persist /mnt/vendor/persist ext4 noatime,nosuid,nodev,noauto_da_alloc,commit=1,nodelalloc wait,formattable
+# TWRP/OrangeFox recovery fstab for TB375FC — generated from the stock
+# ZUXOS 1.1.04.287 first-stage fstab, AVB tokens stripped at TOKEN level.
+system /system erofs ro wait,slotselect,logical
+system /system ext4 ro wait,slotselect,logical
+system_ext /system_ext erofs ro wait,slotselect,logical
+system_ext /system_ext ext4 ro wait,slotselect,logical
+vendor /vendor erofs ro wait,slotselect,logical
+vendor /vendor ext4 ro wait,slotselect,logical
+product /product erofs ro wait,slotselect,logical
+product /product ext4 ro wait,slotselect,logical
+vendor_dlkm /vendor_dlkm erofs ro wait,slotselect,logical
+vendor_dlkm /vendor_dlkm ext4 ro wait,slotselect,logical
+odm_dlkm /odm_dlkm erofs ro wait,slotselect,logical
+odm_dlkm /odm_dlkm ext4 ro wait,slotselect,logical
+system_dlkm /system_dlkm erofs ro wait,slotselect,logical
+system_dlkm /system_dlkm ext4 ro wait,slotselect,logical
+/dev/block/by-name/metadata /metadata f2fs noatime,nosuid,nodev,discard wait,check,formattable
+/dev/block/by-name/userdata /data f2fs noatime,nosuid,nodev,discard,noflush_merge,fsync_mode=nobarrier,reserve_root=134217,resgid=1065,inlinecrypt wait,check,formattable,quota,latemount,resize,reservedsize=128m,checkpoint=fs,fileencryption=aes-256-xts:aes-256-cts:v2+inlinecrypt_optimized,keydirectory=/metadata/vold/metadata_encryption,fsverity
+/dev/block/by-name/protect1 /mnt/vendor/protect_f ext4 noatime,nosuid,nodev,noauto_da_alloc,commit=1,nodelalloc wait,check,formattable
+/dev/block/by-name/protect2 /mnt/vendor/protect_s ext4 noatime,nosuid,nodev,noauto_da_alloc,commit=1,nodelalloc wait,check,formattable
+/dev/block/by-name/nvdata /mnt/vendor/nvdata ext4 noatime,nosuid,nodev,noauto_da_alloc,commit=1,nodelalloc wait,check,formattable
+/dev/block/by-name/nvcfg /mnt/vendor/nvcfg ext4 noatime,nosuid,nodev,noauto_da_alloc,commit=1,nodelalloc wait,check,formattable
+/dev/block/by-name/lenovocust /lenovocust ext4 noatime,nosuid,nodev,noauto_da_alloc,commit=1,nodelalloc wait,check,formattable
+/dev/block/by-name/persist /mnt/vendor/persist ext4 noatime,nosuid,nodev,noauto_da_alloc,commit=1,nodelalloc wait,check,formattable
 /devices/platform/soc/11240000.mmc* auto auto defaults voldmanaged=sdcard1:auto,encryptable=userdata
 /devices/platform/usb_xhci* auto vfat defaults voldmanaged=usbotg:auto
 /devices/platform/soc/11201000.usb0/11200000.xhci* auto vfat defaults voldmanaged=usbotg:auto
@@ -38,9 +34,9 @@ system_dlkm /system_dlkm ext4 ro wait,slotselect
 /dev/block/by-name/para /para emmc defaults defaults
 /dev/block/by-name/misc /misc emmc defaults defaults
 /dev/block/by-name/init_boot /init_boot emmc defaults defaults
-/dev/block/by-name/boot /boot emmc defaults first_stage_mount,nofail,slotselect
-/dev/block/by-name/vbmeta_vendor /vbmeta_vendor emmc defaults first_stage_mount,nofail,slotselect
-/dev/block/by-name/vbmeta_system /vbmeta_system emmc defaults first_stage_mount,nofail,slotselect
+/dev/block/by-name/boot /boot emmc defaults nofail,slotselect
+/dev/block/by-name/vbmeta_vendor /vbmeta_vendor emmc defaults nofail,slotselect
+/dev/block/by-name/vbmeta_system /vbmeta_system emmc defaults nofail,slotselect
 /dev/block/by-name/logo /logo emmc defaults defaults
 /dev/block/by-name/expdb /expdb emmc defaults defaults
 /dev/block/by-name/seccfg /seccfg emmc defaults defaults
@@ -79,4 +75,4 @@ system_dlkm /system_dlkm ext4 ro wait,slotselect
 /dev/block/by-name/connsys_bt /connsys_bt emmc defaults defaults
 /dev/block/by-name/otp /otp emmc defaults defaults
 /dev/block/by-name/vbmeta /vbmeta emmc defaults defaults
-/dev/block/dm-lenovobackup /mnt/lenovobackup f2fs noatime,nosuid,nodev,discard,noflush_merge,fsync_mode=nobarrier,reserve_root=134217,resgid=1065,inlinecrypt wait,formattable,quota,latemount,resize,reservedsize=128m,checkpoint=fs
+/dev/block/dm-lenovobackup /mnt/lenovobackup f2fs noatime,nosuid,nodev,discard,noflush_merge,fsync_mode=nobarrier,reserve_root=134217,resgid=1065,inlinecrypt wait,check,formattable,quota,latemount,resize,reservedsize=128m,checkpoint=fs

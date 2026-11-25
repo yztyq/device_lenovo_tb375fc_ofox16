@@ -1,0 +1,42 @@
+name: Validate device tree
+
+# Static checks only: no AOSP/Big-manifest sync, no toolchain, finishes in
+# under a minute. Safe to run on every push.
+
+on:
+  push:
+    branches: [ main, fox_16.0 ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout device tree
+        uses: actions/checkout@v4
+
+      - name: Static validation
+        run: |
+          bash scripts/validate.sh
+
+      - name: Write summary
+        if: always()
+        run: |
+          bash scripts/validate.sh > validation.log 2>&1 || true
+          {
+            echo "### Device-tree validation"
+            echo '```'
+            tail -n 60 validation.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload validation log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-log-r${{ github.run_number }}
+          path: validation.log
+          if-no-files-found: warn
