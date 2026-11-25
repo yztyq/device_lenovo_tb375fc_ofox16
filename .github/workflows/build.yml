@@ -78,22 +78,30 @@ jobs:
           mka vendorbootimage -j"$(nproc --all)" 2>&1 | tee build.log
           df -h /
 
-      - name: Collect outputs
+      - name: Collect outputs with timestamp
         if: always()
         run: |
+          TS=$(date -u +%Y%m%d_%H%M%S)
+          SHA7=$(echo "${GITHUB_SHA}" | cut -c1-7)
           mkdir -p out_artifacts
-          find ${{ github.workspace }}/fox/out -name 'vendor_boot*.img' -exec cp {} out_artifacts/ \;
-          find ${{ github.workspace }}/fox/out -name '*vendor_boot*.zip' -exec cp {} out_artifacts/ \; || true
+          for f in $(find "${{ github.workspace }}/fox/out" -name 'vendor_boot*.img' 2>/dev/null); do
+            cp "$f" "out_artifacts/$(basename "$f" .img)_tb375fc_${TS}_${SHA7}.img"
+          done
+          for f in $(find "${{ github.workspace }}/fox/out" -name '*vendor_boot*.zip' 2>/dev/null); do
+            cp "$f" "out_artifacts/$(basename "$f" .zip)_tb375fc_${TS}_${SHA7}.zip"
+          done
+          printf 'build_utc=%s\ncommit=%s\nrun=%s\n' "${TS}" "${GITHUB_SHA}" "${GITHUB_RUN_NUMBER}" > out_artifacts/build_info.txt
+          echo "timestamp=${TS}" > timestamp.txt
           ls -la out_artifacts || true
-          if [ -f ${{ github.workspace }}/fox/build.log ]; then
-            tail -n 200 ${{ github.workspace }}/fox/build.log > build_tail.log
+          if [ -f "${{ github.workspace }}/fox/build.log" ]; then
+            tail -n 200 "${{ github.workspace }}/fox/build.log" > build_tail.log
           fi
 
       - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: tb375fc-ofox16-${{ github.run_number }}
+          name: tb375fc-ofox16-r${{ github.run_number }}
           path: |
             out_artifacts/**
             build_tail.log
