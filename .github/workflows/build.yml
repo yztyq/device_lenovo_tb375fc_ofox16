@@ -180,7 +180,8 @@ jobs:
           OUT=out/target/product/tb375fc
           REC=$(ls "$OUT"/obj/PACKAGING/vendor_ramdisk_fragments_intermediates/recovery.cpio* 2>/dev/null | head -n 1)
           DTB="$OUT/dtb.img"
-          if [ "$RC" -ne 0 ] && [ -n "$REC" ] && [ -f "$DTB" ]; then
+          FBP=device/lenovo/tb375fc/prebuilt/ofox_recovery_ramdisk.zst
+          if [ "$RC" -ne 0 ] && [ -f "$DTB" ] && { [ -n "$REC" ] || [ -f "$FBP" ]; }; then
             # run#16（2026-11-26）实测：fox_16.0 的 system/tools/mkbootimg 是旧版，
             # 不认 AOSP 16 Makefile 传的 --ramdisk_type / --ramdisk_name /
             # --vendor_ramdisk_fragment，最后一步必然：
@@ -190,6 +191,7 @@ jobs:
             echo "mkbootimg step failed (old mkbootimg.py, no fragment support) - continuing with parts"
             echo "rec_path=$REC"   >> "$GITHUB_OUTPUT"
             echo "dtb_path=$DTB"   >> "$GITHUB_OUTPUT"
+            echo "fallback_path=$FBP" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           exit $RC
@@ -201,6 +203,7 @@ jobs:
         env:
           REC: ${{ steps.build.outputs.rec_path }}
           DTB: ${{ steps.build.outputs.dtb_path }}
+          FBP: ${{ steps.build.outputs.fallback_path }}
         run: |
           cd ${{ github.workspace }}/fox
           DEV=device/lenovo/tb375fc
@@ -210,13 +213,17 @@ jobs:
             python3 $DEV/scripts/splice_platform.py \
               --input "$OUT_IMG" \
               --platform $DEV/prebuilt/platform_ramdisk.lz4 \
+              --fallback-cpio $DEV/prebuilt/ofox_recovery_ramdisk.zst \
               --output ${{ github.workspace }}/vendor_boot_TWRP_64MB.img \
               --size 67108864
-          elif [ -n "$REC" ] && [ -n "$DTB" ]; then
+          elif [ -f "$DTB" ]; then
+            # 编出来的 recovery.cpio 可能只是"壳"（MOVE 模式下缺 system/bin/recovery），
+            # 脚本会自检；不完整就换成 prebuilt 里那份已验证能起 recovery 的分片。
             python3 $DEV/scripts/splice_platform.py \
-              --recovery-cpio "$REC" \
+              --recovery-cpio "${REC:-$DEV/prebuilt/ofox_recovery_ramdisk.zst}" \
               --dtb "$DTB" \
               --header $DEV/prebuilt/vendor_boot_header.bin \
+              --fallback-cpio $DEV/prebuilt/ofox_recovery_ramdisk.zst \
               --platform $DEV/prebuilt/platform_ramdisk.lz4 \
               --output ${{ github.workspace }}/vendor_boot_TWRP_64MB.img \
               --size 67108864
@@ -225,6 +232,12 @@ jobs:
             exit 1
           fi
           ls -l ${{ github.workspace }}/vendor_boot_TWRP_64MB.img
+          md5sum ${{ github.workspace }}/vendor_boot_TWRP_64MB.img
+          # 2026-11-26 实机验证能进 recovery 的那一份，md5 固定是下面这个值。
+          # 走到 prebuilt 兜底时输出必须和它逐字节一致。
+          KNOWN=6f8c9b4ed15585ed04249fc31db424ea
+          GOT=$(md5sum ${{ github.workspace }}/vendor_boot_TWRP_64MB.img | cut -d' ' -f1)
+          if [ "$GOT" = "$KNOWN" ]; then echo "== 与实测可用包逐字节一致 ($GOT) =="; else echo "== md5 $GOT（与已验证包不同，注意 recovery 分片来源）=="; fi
 
       - name: Collect outputs with timestamp
         if: always()
