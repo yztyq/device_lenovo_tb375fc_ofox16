@@ -147,6 +147,20 @@ jobs:
           # with: rsync: link_stat ".../tb375fc/root" failed: No such file or
           # directory. Pre-create both staging dirs so it is deterministic.
           mkdir -p "$OUT/root" "$OUT/vendor_ramdisk"
+          # run#15（2026-11-26）实测：recovery ramdisk 规则里 OrangeFox 的
+          # Fox_Before_Recovery_Image 钩子在「cp -rf device/.../recovery/root」之前就跑，
+          # 它要往 $TARGET_RECOVERY_ROOT_OUT/sbin 写 magiskboot、往 linkerconfig 写
+          # ld.config.txt。MOVE 模式下 recovery root 只是从空的 $OUT/root rsync 出来的，
+          # 没有 sbin/、没有 linkerconfig/，于是：
+          #   /bin/cp: cannot create .../recovery/root//sbin/magiskboot: No such file
+          #   touch: '.../recovery/root/linkerconfig/ld.config.txt': No such file
+          #   ninja: build stopped: subcommand failed.
+          # 先把本仓库的 recovery/root 预铺进去，并把钩子需要的两个目录建好。
+          mkdir -p "$OUT/recovery/root"
+          rsync -a "device/lenovo/tb375fc/recovery/root/" "$OUT/recovery/root/"
+          mkdir -p "$OUT/recovery/root/sbin" "$OUT/recovery/root/linkerconfig" \
+                   "$OUT/recovery/root/system/etc" "$OUT/recovery/root/system/bin"
+          ls -d "$OUT/recovery/root/sbin" "$OUT/recovery/root/linkerconfig"
           # Cap the java heap so several javac/metalava workers cannot eat the
           # whole 7 GB runner, and heartbeat the system pressure every 3 min so
           # the next crash still leaves a trail in the step log.
