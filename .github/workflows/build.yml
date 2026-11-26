@@ -246,14 +246,17 @@ jobs:
           TS=${{ steps.meta.outputs.ts }}
           SHA7=${{ steps.meta.outputs.sha7 }}
           mkdir -p out_artifacts
-          for f in $(find "${{ github.workspace }}/fox/out" -name 'vendor_boot*.img' 2>/dev/null); do
+          # 0 字节的 vendor_boot.img 是 mkbootimg 报 ValueError 之前写空的残骸，
+          # run#18 就是把它也塞进 Release 才挂的
+          #（Validation Failed: ReleaseAsset size must be greater than or equal to 1）。
+          for f in $(find "${{ github.workspace }}/fox/out" -name 'vendor_boot*.img' -size +1k 2>/dev/null); do
             cp "$f" "out_artifacts/$(basename "$f" .img)_tb375fc_${TS}_${SHA7}.img"
           done
           if [ -f "${{ github.workspace }}/vendor_boot_TWRP_64MB.img" ]; then
             cp "${{ github.workspace }}/vendor_boot_TWRP_64MB.img" \
                "out_artifacts/vendor_boot_TWRP_64MB_tb375fc_${TS}_${SHA7}.img"
           fi
-          for f in $(find "${{ github.workspace }}/fox/out" -name '*vendor_boot*.zip' 2>/dev/null); do
+          for f in $(find "${{ github.workspace }}/fox/out" -name '*vendor_boot*.zip' -size +1k 2>/dev/null); do
             cp "$f" "out_artifacts/$(basename "$f" .zip)_tb375fc_${TS}_${SHA7}.zip"
           done
           printf 'build_utc=%s\ncommit=%s\nrun=%s\n' "${TS}" "${GITHUB_SHA}" "${GITHUB_RUN_NUMBER}" > out_artifacts/build_info.txt
@@ -305,5 +308,7 @@ jobs:
             本包未做实机验证，第一次刷入请备好官方原片。
           prerelease: true
           fail_on_unmatched_files: false
-          files: out_artifacts/**
+          files: |
+            out_artifacts/*.img
+            out_artifacts/build_info.txt
           token: ${{ secrets.GITHUB_TOKEN }}
