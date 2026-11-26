@@ -39,6 +39,7 @@ for f in \
   BoardConfig.mk device.mk AndroidProducts.mk twrp_tb375fc.mk \
   vendorsetup.sh system.prop README.md \
   prebuilt/dtb \
+  prebuilt/dtb_dir/tb375fc.dtb \
   recovery/root/system/etc/recovery.fstab \
   recovery/root/init.recovery.mt8792.rc \
   .github/workflows/build.yml .github/workflows/validate.yml
@@ -57,7 +58,12 @@ has_var BoardConfig.mk BOARD_TAGS_OFFSET '0x07c88000'
 has_var BoardConfig.mk BOARD_DTB_OFFSET '0x07c88000'
 has_var BoardConfig.mk BOARD_DTB_SIZE '411876'
 has_var BoardConfig.mk BOARD_VENDOR_BOOTIMAGE_PARTITION_SIZE '67108864'
-has_var BoardConfig.mk BOARD_VENDOR_CMDLINE 'bootopt=64S3,32N2,64N2'
+has_var BoardConfig.mk BOARD_KERNEL_CMDLINE 'bootopt=64S3,32N2,64N2'
+has_var BoardConfig.mk BOARD_RAMDISK_USE_LZ4 'true'
+has_var BoardConfig.mk BOARD_PREBUILT_DTBIMAGE_DIR 'prebuilt/dtb_dir'
+for v in BOARD_AVB_ENABLE BOARD_AVB_ALGORITHM BOARD_AVB_KEY_PATH BOARD_AVB_VENDOR_BOOT_KEY_PATH BOARD_AVB_VENDOR_BOOT_ALGORITHM BOARD_AVB_VENDOR_BOOT_ROLLBACK_INDEX BOARD_AVB_VENDOR_BOOT_ROLLBACK_INDEX_LOCATION BOARD_AVB_VENDOR_BOOTIMAGE_KEY_PATH; do
+  if grep -Eq "^[[:space:]]*$v[[:space:]]*:?=" BoardConfig.mk; then pass "$v set"; else fail "$v missing (avbtool would run with no --algorithm/--key)"; fi
+done
 
 sect "dtb size matches BOARD_DTB_SIZE"
 DTB=$(stat -c%s prebuilt/dtb 2>/dev/null || echo 0)
