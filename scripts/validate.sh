@@ -66,27 +66,29 @@ has_var BoardConfig.mk BOARD_KERNEL_CMDLINE 'bootopt=64S3,32N2,64N2'
 has_var BoardConfig.mk BOARD_RAMDISK_USE_LZ4 'true'
 has_var BoardConfig.mk BOARD_PREBUILT_DTBIMAGE_DIR 'prebuilt/dtb_dir'
 # 2026-11-26：vendor_boot 必须是「两片」才进得了 recovery（device 上唯一验证过
-# 的结构）。单流方案（MOVE=true + TARGET_NO_RECOVERY=true）编出来 platform 分片
-# 只有 4 字节、recovery 退化成 AOSP recovery，实刷全部失败。
+# 的结构）。AOSP 16 只接受 MOVE + INCLUDE 同时为 true：只开 INCLUDE 会在 lunch 阶段
+# 被 board_config.mk:1069-1074 直接 $(error)（CI run 45793799376 就是这么死的），
+# 只开 MOVE 则是单流（recovery 资源并进默认 vendor ramdisk，platform 片退化成 4 字节）。
 if grep -Eq '^[[:space:]]*BOARD_INCLUDE_RECOVERY_RAMDISK_IN_VENDOR_BOOT[[:space:]]*:?=[[:space:]]*true' BoardConfig.mk; then
   pass "BOARD_INCLUDE_RECOVERY_RAMDISK_IN_VENDOR_BOOT = true（两片结构）"
 else
   fail "BOARD_INCLUDE_RECOVERY_RAMDISK_IN_VENDOR_BOOT must be true (two-fragment vendor_boot)"
 fi
 if grep -Eq '^[[:space:]]*BOARD_MOVE_RECOVERY_RESOURCES_TO_VENDOR_BOOT[[:space:]]*:?=[[:space:]]*true' BoardConfig.mk; then
-  fail "BOARD_MOVE_RECOVERY_RESOURCES_TO_VENDOR_BOOT must be off (it empties the platform fragment)"
+  pass "BOARD_MOVE_RECOVERY_RESOURCES_TO_VENDOR_BOOT = true（INCLUDE 的成对条件）"
 else
-  pass "BOARD_MOVE_RECOVERY_RESOURCES_TO_VENDOR_BOOT off"
+  fail "BOARD_MOVE_RECOVERY_RESOURCES_TO_VENDOR_BOOT must be true, INCLUDE is rejected by board_config.mk without it"
 fi
 if grep -Eq '^[[:space:]]*TARGET_NO_RECOVERY[[:space:]]*:?=[[:space:]]*true' BoardConfig.mk; then
   fail "TARGET_NO_RECOVERY must be off (it drops the recovery fragment entirely)"
 else
   pass "TARGET_NO_RECOVERY off"
 fi
-if grep -Eq '^[[:space:]]*BOARD_PREBUILT_PLATFORM_RAMDISK' BoardConfig.mk; then
-  pass "BOARD_PREBUILT_PLATFORM_RAMDISK declared"
+# AOSP 没有 BOARD_PREBUILT_PLATFORM_RAMDISK 这个变量；写了也不会生效，只会误导。
+if grep -Eq '^[[:space:]]*BOARD_PREBUILT_PLATFORM_RAMDISK[[:space:]]*:?=' BoardConfig.mk; then
+  fail "BOARD_PREBUILT_PLATFORM_RAMDISK is not an AOSP variable - remove it (splice script does the platform fragment)"
 else
-  warn "BOARD_PREBUILT_PLATFORM_RAMDISK not declared (splice script only)"
+  pass "no bogus BOARD_PREBUILT_PLATFORM_RAMDISK"
 fi
 for v in BOARD_AVB_ENABLE BOARD_AVB_ALGORITHM BOARD_AVB_KEY_PATH BOARD_AVB_VENDOR_BOOT_KEY_PATH BOARD_AVB_VENDOR_BOOT_ALGORITHM BOARD_AVB_VENDOR_BOOT_ROLLBACK_INDEX BOARD_AVB_VENDOR_BOOT_ROLLBACK_INDEX_LOCATION BOARD_AVB_VENDOR_BOOTIMAGE_KEY_PATH; do
   if grep -Eq "^[[:space:]]*$v[[:space:]]*:?=" BoardConfig.mk; then pass "$v set"; else fail "$v missing (avbtool would run with no --algorithm/--key)"; fi
@@ -223,6 +225,9 @@ grep -q 'mka vendorbootimage' .github/workflows/build.yml && pass "build.yml bui
 grep -q 'TS=$(date -u +%Y%m%d_%H%M%S)' .github/workflows/build.yml && pass "build.yml stamps artifacts with UTC time" || fail "build.yml has no timestamp stamping"
 grep -q '_tb375fc_${TS}_${SHA7}.img' .github/workflows/build.yml && pass "artifact name pattern includes time + sha" || fail "artifact name pattern missing"
 grep -q 'validate.sh' .github/workflows/validate.yml && pass "validate workflow runs the script" || fail "validate workflow does not run the script"
+# 产物要能直接下载：Release 发布 + contents: write 必须成对，缺一个就会 403。
+grep -q 'softprops/action-gh-release' .github/workflows/build.yml && pass "build.yml publishes a release" || fail "build.yml does not publish a release"
+grep -q 'contents: write' .github/workflows/build.yml && pass "build.yml grants contents: write" || fail "release needs 'permissions: contents: write'"
 
 sect "fox build variables"
 has_flag vendorsetup.sh FOX_VENDOR_BOOT_RECOVERY

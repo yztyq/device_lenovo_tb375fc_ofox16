@@ -4,6 +4,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# 发布 Release 要写权限；仓库默认 workflow 权限若被设成 read，这一步会 403。
+permissions:
+  contents: write
+
 on:
   workflow_dispatch:
     inputs:
@@ -200,11 +204,21 @@ jobs:
           if-no-files-found: warn
 
       - name: Publish pre-release
-        if: github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag != ''
+        # 每次成功编出 img 都直接发到 Releases（不必再进 Actions 翻 artifact）。
+        # 手动 dispatch 时可以用 release_tag 指定 tag，不填则自动用 run 号。
+        if: success() && hashFiles('out_artifacts/**/*.img') != ''
         uses: softprops/action-gh-release@v2
+        continue-on-error: true
         with:
-          tag_name: ${{ github.event.inputs.release_tag }}
-          name: OrangeFox ${{ github.event.inputs.release_tag }}
+          tag_name: ${{ github.event.inputs.release_tag != '' && github.event.inputs.release_tag || format('ofox-tb375fc-r{0}', github.run_number) }}
+          name: OrangeFox TB375FC ${{ github.event.inputs.release_tag != '' && github.event.inputs.release_tag || format('r{0}', github.run_number) }}
+          body: |
+            两片 vendor_boot：platform(type=1，官方 6.1.138 模块) + recovery(type=2，OrangeFox 根文件系统)。
+            构建：`${{ github.sha }}`
+
+            刷入：`adb reboot bootloader && fastboot flash vendor_boot <img> && fastboot reboot recovery`
+            回滚：刷回官方 vendor_boot.img（md5 E60D9F853E08CDE9D099EA1143D760F8）。
           prerelease: true
+          fail_on_unmatched_files: false
           files: out_artifacts/**
           token: ${{ secrets.GITHUB_TOKEN }}

@@ -63,23 +63,29 @@ BOARD_RAMDISK_USE_LZ4 := true
 
 # ---------------------------------------------------------------- vendor_boot
 BOARD_USES_GENERIC_KERNEL_IMAGE := true
-# 2026-11-26 实测结论（按 device 上真正进得了 recovery 的包反推）：
-#   MOVE + TARGET_NO_RECOVERY 的组合会让 TWRP 资源被赶进 vendor ramdisk，而
-#   TARGET_NO_KERNEL 下 $OUT/vendor_ramdisk 并不存在（mkbootfs: cannot open
-#   directory）=> platform 分片只剩 4 字节、recovery 分片退化成 AOSP recovery，
-#   刷进去必定进不了 recovery。
-#   vendor_boot 必须是「两片」：type=1 platform（官方原片，含 222 个 .ko）+
-#   type=2 recovery（TWRP/OF 根文件系统）。platform 只能来自官方 vendor_boot，
-#   由 scripts/splice_platform.py 在打包时拼回去。
-# BOARD_MOVE_RECOVERY_RESOURCES_TO_VENDOR_BOOT := true
+# 两片结构在 AOSP 16 里只有一种合法组合：MOVE + INCLUDE 同时为 true。
+#   build/make/core/board_config.mk:1069-1074 硬校验：INCLUDE=true 而 MOVE 不为 true
+#   时 lunch/dumpvars 直接 $(error)
+#     "Should not set BOARD_INCLUDE_RECOVERY_RAMDISK_IN_VENDOR_BOOT if
+#      BOARD_MOVE_RECOVERY_RESOURCES_TO_VENDOR_BOOT is not set"
+#   （2026-11-26 CI 就死在这一行，run 45793799376）
+# 两者的真实语义：
+#   MOVE=true    -> build/make/core/board_config.mk 里 MOVE 分支优先，BUILDING_RECOVERY_IMAGE=true：
+#                   只编 recovery 资源（TARGET_RECOVERY_ROOT_OUT），不产 recovery.img
+#                   （core/Makefile:283-296 明确这么设计）
+#   INCLUDE=true -> core/Makefile:345-355 把 TARGET_RECOVERY_ROOT_OUT 注册成独立分片，
+#                   MKBOOTIMG_ARGS += --ramdisk_type RECOVERY，即 vendor_boot 的 type=2 片
+#   两者都为 true 时 core/Makefile:1620-1625 不再把 recovery 资源并进默认 vendor ramdisk
+#   —— 当初 platform 片只剩 4 字节、recovery 片退化成 AOSP recovery，就是 MOVE=true 但
+#   INCLUDE 没开（单流）时并进去的后果。
+# platform 片仍取官方原片（first_stage_ramdisk + 222 个 6.1.138 .ko），由
+# scripts/splice_platform.py 在打包时替换第 0 片；AOSP 没有 BOARD_PREBUILT_PLATFORM_RAMDISK
+# 这个变量（只有 BOARD_VENDOR_RAMDISK_FRAGMENT.<name>.PREBUILT），所以不要写那一行。
+BOARD_MOVE_RECOVERY_RESOURCES_TO_VENDOR_BOOT := true
 BOARD_INCLUDE_RECOVERY_RAMDISK_IN_VENDOR_BOOT := true
-# TARGET_NO_RECOVERY := true
+# TARGET_NO_RECOVERY := true   # 不要打开：MOVE 已经保证不产 recovery.img，打开它只会削掉 recovery 资源安装
 # TW_LOAD_VENDOR_BOOT_MODULES := true
 BOARD_USES_RECOVERY_AS_BOOT := false
-
-# 官方 platform 分片（first_stage_ramdisk + lib/modules，25,863,198 B）。
-# 不能由本树生成；打包脚本把它塞进 vendor_boot 的第 0 片。
-BOARD_PREBUILT_PLATFORM_RAMDISK := $(DEVICE_PATH)/prebuilt/platform_ramdisk.lz4
 
 # ---------------------------------------------------------------- partitions
 BOARD_SUPER_PARTITION_SIZE := 9126805504
