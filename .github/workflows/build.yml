@@ -128,6 +128,7 @@ jobs:
           find ${{ github.workspace }}/fox/device/lenovo/tb375fc -name '*.ko' | wc -l
 
       - name: Build vendorbootimage
+        id: build
         run: |
           cd ${{ github.workspace }}/fox
           export ALLOW_MISSING_DEPENDENCIES=true
@@ -176,24 +177,54 @@ jobs:
           kill $HB 2>/dev/null || true
           df -h /
           free -h
+          OUT=out/target/product/tb375fc
+          REC=$(ls "$OUT"/obj/PACKAGING/vendor_ramdisk_fragments_intermediates/recovery.cpio* 2>/dev/null | head -n 1)
+          DTB="$OUT/dtb.img"
+          if [ "$RC" -ne 0 ] && [ -n "$REC" ] && [ -f "$DTB" ]; then
+            # run#16（2026-11-26）实测：fox_16.0 的 system/tools/mkbootimg 是旧版，
+            # 不认 AOSP 16 Makefile 传的 --ramdisk_type / --ramdisk_name /
+            # --vendor_ramdisk_fragment，最后一步必然：
+            #   ValueError: Unrecognized arguments: ['--ramdisk_type', 'RECOVERY', ...]
+            # 但那一刻 recovery 分片 recovery.cpio.lz4 和 dtb.img 都已经编好了，
+            # 所以判定失败但把零件路径吐出去，交给 Splice 步骤直接拼包。
+            echo "mkbootimg step failed (old mkbootimg.py, no fragment support) - continuing with parts"
+            echo "rec_path=$REC"   >> "$GITHUB_OUTPUT"
+            echo "dtb_path=$DTB"   >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           exit $RC
 
       - name: Splice official platform ramdisk
-        # 本树编出来的 vendor_boot 只有 recovery 一片（platform 是 4 字节空片），
-        # 必须把官方 platform 片拼回去，并重写 v4 分片表（platform type=1 /
-        # recovery type=2），否则刷进去进不了 recovery。详见 README 附录 A。
+        id: splice
+        # 两条路径：有 vendor_boot.img 就从镜像里抽 recovery 片；没有就用零件拼
+        # （本树 mkbootimg 不支持分片时就是这种）。
+        env:
+          REC: ${{ steps.build.outputs.rec_path }}
+          DTB: ${{ steps.build.outputs.dtb_path }}
         run: |
           cd ${{ github.workspace }}/fox
-          OUT_IMG=$(find out -maxdepth 4 -name 'vendor_boot*.img' | head -n 1)
-          echo "built: ${OUT_IMG:-<none>}"
+          DEV=device/lenovo/tb375fc
+          OUT_IMG=$(find out -maxdepth 4 -name 'vendor_boot.img' -size +1k 2>/dev/null | head -n 1)
+          echo "vendor_boot.img: ${OUT_IMG:-<none>}  parts: rec=${REC:-<none>} dtb=${DTB:-<none>}"
           if [ -n "$OUT_IMG" ]; then
-            python3 device/lenovo/tb375fc/scripts/splice_platform.py \
+            python3 $DEV/scripts/splice_platform.py \
               --input "$OUT_IMG" \
-              --platform device/lenovo/tb375fc/prebuilt/platform_ramdisk.lz4 \
+              --platform $DEV/prebuilt/platform_ramdisk.lz4 \
               --output ${{ github.workspace }}/vendor_boot_TWRP_64MB.img \
               --size 67108864
-            ls -l ${{ github.workspace }}/vendor_boot_TWRP_64MB.img
+          elif [ -n "$REC" ] && [ -n "$DTB" ]; then
+            python3 $DEV/scripts/splice_platform.py \
+              --recovery-cpio "$REC" \
+              --dtb "$DTB" \
+              --header $DEV/prebuilt/vendor_boot_header.bin \
+              --platform $DEV/prebuilt/platform_ramdisk.lz4 \
+              --output ${{ github.workspace }}/vendor_boot_TWRP_64MB.img \
+              --size 67108864
+          else
+            echo "既有没 vendor_boot.img 也没有 recovery.cpio 零件，无法拼包"
+            exit 1
           fi
+          ls -l ${{ github.workspace }}/vendor_boot_TWRP_64MB.img
 
       - name: Collect outputs with timestamp
         if: always()
