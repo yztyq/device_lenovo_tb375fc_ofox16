@@ -223,6 +223,11 @@ for w in .github/workflows/build.yml .github/workflows/validate.yml; do
 done
 grep -q 'mka vendorbootimage' .github/workflows/build.yml && pass "build.yml builds vendorbootimage" || fail "build.yml does not build vendorbootimage"
 grep -q 'TS=$(date -u +%Y%m%d_%H%M%S)' .github/workflows/build.yml && pass "build.yml stamps artifacts with UTC time" || fail "build.yml has no timestamp stamping"
+# 时间戳必须只有一处来源（steps.meta.outputs.ts），镜像名和 Release tag 共用。
+grep -q 'id: meta' .github/workflows/build.yml && grep -q 'echo "ts=$TS"' .github/workflows/build.yml \
+  && pass "build.yml computes ts once in the meta step" || fail "build.yml does not expose ts as a step output"
+grep -q 'format('"'"'ofox-tb375fc-{0}'"'"', steps.meta.outputs.ts)' .github/workflows/build.yml \
+  && pass "release tag carries the UTC timestamp" || fail "release tag is not timestamped"
 grep -q '_tb375fc_${TS}_${SHA7}.img' .github/workflows/build.yml && pass "artifact name pattern includes time + sha" || fail "artifact name pattern missing"
 grep -q 'validate.sh' .github/workflows/validate.yml && pass "validate workflow runs the script" || fail "validate workflow does not run the script"
 # 产物要能直接下载：Release 发布 + contents: write 必须成对，缺一个就会 403。

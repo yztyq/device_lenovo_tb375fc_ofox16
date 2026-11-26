@@ -30,6 +30,17 @@ jobs:
         with:
           path: device/lenovo/tb375fc
 
+      - name: Compute build metadata
+        # 时间戳只算一次，镜像文件名与 Release 的 tag/正文共用同一个值，
+        # 免得两边差几秒对不上。
+        id: meta
+        run: |
+          TS=$(date -u +%Y%m%d_%H%M%S)
+          SHA7=$(echo "${GITHUB_SHA}" | cut -c1-7)
+          echo "ts=$TS"     >> "$GITHUB_OUTPUT"
+          echo "sha7=$SHA7" >> "$GITHUB_OUTPUT"
+          echo "timestamp ${TS} sha7 ${SHA7}"
+
       - name: Free disk space
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
@@ -172,9 +183,10 @@ jobs:
 
       - name: Collect outputs with timestamp
         if: always()
+        id: collect
         run: |
-          TS=$(date -u +%Y%m%d_%H%M%S)
-          SHA7=$(echo "${GITHUB_SHA}" | cut -c1-7)
+          TS=${{ steps.meta.outputs.ts }}
+          SHA7=${{ steps.meta.outputs.sha7 }}
           mkdir -p out_artifacts
           for f in $(find "${{ github.workspace }}/fox/out" -name 'vendor_boot*.img' 2>/dev/null); do
             cp "$f" "out_artifacts/$(basename "$f" .img)_tb375fc_${TS}_${SHA7}.img"
@@ -205,19 +217,34 @@ jobs:
 
       - name: Publish pre-release
         # 每次成功编出 img 都直接发到 Releases（不必再进 Actions 翻 artifact）。
-        # 手动 dispatch 时可以用 release_tag 指定 tag，不填则自动用 run 号。
+        # tag/标题都带构建时算出的 UTC 时间戳，和镜像是同一个值：
+        #   tag  = ofox-tb375fc-20261126_103012
+        # 手动 dispatch 时若填了 release_tag，就用填的那个。
         if: success() && hashFiles('out_artifacts/**/*.img') != ''
         uses: softprops/action-gh-release@v2
         continue-on-error: true
         with:
-          tag_name: ${{ github.event.inputs.release_tag != '' && github.event.inputs.release_tag || format('ofox-tb375fc-r{0}', github.run_number) }}
-          name: OrangeFox TB375FC ${{ github.event.inputs.release_tag != '' && github.event.inputs.release_tag || format('r{0}', github.run_number) }}
+          tag_name: ${{ github.event.inputs.release_tag != '' && github.event.inputs.release_tag || format('ofox-tb375fc-{0}', steps.meta.outputs.ts) }}
+          name: OrangeFox TB375FC ${{ steps.meta.outputs.ts }} (r${{ github.run_number }})
           body: |
-            两片 vendor_boot：platform(type=1，官方 6.1.138 模块) + recovery(type=2，OrangeFox 根文件系统)。
-            构建：`${{ github.sha }}`
+            OrangeFox TB375FC 两片 vendor_boot
 
-            刷入：`adb reboot bootloader && fastboot flash vendor_boot <img> && fastboot reboot recovery`
-            回滚：刷回官方 vendor_boot.img（md5 E60D9F853E08CDE9D099EA1143D760F8）。
+            | 项 | 值 |
+            |---|---|
+            | 时间戳 (UTC) | `${{ steps.meta.outputs.ts }}` |
+            | 提交 | `${{ github.sha }}` |
+            | run | #${{ github.run_number }} |
+            | 结构 | platform(type=1，官方 6.1.138 模块) + recovery(type=2，OrangeFox 根文件系统) |
+            | 大小 | 67,108,864 B (64 MiB) |
+
+            刷入：
+            ```
+            adb reboot bootloader
+            fastboot flash vendor_boot <img>
+            fastboot reboot recovery
+            ```
+            回滚：刷回官方 `vendor_boot.img`（vrs 26,902,388，md5 E60D9F853E08CDE9D099EA1143D760F8）。
+            本包未做实机验证，第一次刷入请备好官方原片。
           prerelease: true
           fail_on_unmatched_files: false
           files: out_artifacts/**
