@@ -89,6 +89,22 @@ BOARD_ODMIMAGE_FILE_SYSTEM_TYPE := erofs
 # of the dependency chain.
 BOARD_VENDOR_DLKMIMAGE_FILE_SYSTEM_TYPE := ext4
 BOARD_ODM_DLKMIMAGE_FILE_SYSTEM_TYPE := ext4
+
+# Verified boot: the stock vendor_boot is an AVB-signed image, so the replacement is
+# signed too (AOSP test key) and padded to the 64 MiB partition.
+# build/make defines NO per-partition AVB key defaults: INTERNAL_AVB_VENDOR_BOOT_
+# SIGNING_ARGS only exists after _check-and-set-avb-chain-args runs, which requires
+# BOARD_AVB_VENDOR_BOOT_KEY_PATH and then hard-$(error)s unless _ALGORITHM,
+# _ROLLBACK_INDEX and _ROLLBACK_INDEX_LOCATION are also defined (core/Makefile:4769).
+# With them unset, avbtool add_hash_footer would run with no --algorithm/--key.
+BOARD_AVB_ENABLE := true
+BOARD_AVB_ALGORITHM := SHA256_RSA2048
+BOARD_AVB_KEY_PATH := external/avb/test/data/testkey_rsa2048.pem
+BOARD_AVB_VENDOR_BOOT_KEY_PATH := $(BOARD_AVB_KEY_PATH)
+BOARD_AVB_VENDOR_BOOT_ALGORITHM := $(BOARD_AVB_ALGORITHM)
+BOARD_AVB_VENDOR_BOOT_ROLLBACK_INDEX := 0
+BOARD_AVB_VENDOR_BOOT_ROLLBACK_INDEX_LOCATION := 1
+BOARD_AVB_VENDOR_BOOTIMAGE_KEY_PATH := $(BOARD_AVB_KEY_PATH)
 # No BOARD_SYSTEM_DLKMIMAGE_* here on purpose: this tablet has no separate
 # system_dlkm partition (absent from the super main partition list and from the
 # stock fstab). Setting it makes board_config.mk:906 abort with
