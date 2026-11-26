@@ -124,6 +124,12 @@ jobs:
           source build/envsetup.sh
           . device/lenovo/tb375fc/vendorsetup.sh
           lunch twrp_tb375fc-bp2a-eng
+          # TARGET_NO_KERNEL=true means AOSP never creates out/.../root (it only
+          # appears as a side effect of the boot ramdisk rule), and the recovery
+          # ramdisk rule rsyncs from $OUT/root -- losing that race kills the build
+          # with: rsync: link_stat ".../tb375fc/root" failed: No such file or
+          # directory. Pre-create both staging dirs so it is deterministic.
+          mkdir -p "$OUT/root" "$OUT/vendor_ramdisk"
           # Cap the java heap so several javac/metalava workers cannot eat the
           # whole 7 GB runner, and heartbeat the system pressure every 3 min so
           # the next crash still leaves a trail in the step log.
