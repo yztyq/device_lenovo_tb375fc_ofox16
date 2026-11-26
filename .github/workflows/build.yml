@@ -63,6 +63,8 @@ jobs:
             zlib1g-dev gcc-multilib g++-multilib libc6-dev-i386 lib32ncurses5-dev \
             x11proto-core-dev libx11-dev lib32z1-dev libgl1-mesa-dev libxml2-utils \
             xsltproc unzip fontconfig python3 python-is-python3 ccache
+          # scripts/splice_platform.py 需要 zstandard（把 recovery 分片重编码成 0000+zstd）
+          python3 -m pip install --user zstandard
           df -h /
 
       - name: Configure git
@@ -147,6 +149,23 @@ jobs:
           free -h
           exit $RC
 
+      - name: Splice official platform ramdisk
+        # 本树编出来的 vendor_boot 只有 recovery 一片（platform 是 4 字节空片），
+        # 必须把官方 platform 片拼回去，并重写 v4 分片表（platform type=1 /
+        # recovery type=2），否则刷进去进不了 recovery。详见 README 附录 A。
+        run: |
+          cd ${{ github.workspace }}/fox
+          OUT_IMG=$(find out -maxdepth 4 -name 'vendor_boot*.img' | head -n 1)
+          echo "built: ${OUT_IMG:-<none>}"
+          if [ -n "$OUT_IMG" ]; then
+            python3 device/lenovo/tb375fc/scripts/splice_platform.py \
+              --input "$OUT_IMG" \
+              --platform device/lenovo/tb375fc/prebuilt/platform_ramdisk.lz4 \
+              --output ${{ github.workspace }}/vendor_boot_TWRP_64MB.img \
+              --size 67108864
+            ls -l ${{ github.workspace }}/vendor_boot_TWRP_64MB.img
+          fi
+
       - name: Collect outputs with timestamp
         if: always()
         run: |
@@ -156,6 +175,10 @@ jobs:
           for f in $(find "${{ github.workspace }}/fox/out" -name 'vendor_boot*.img' 2>/dev/null); do
             cp "$f" "out_artifacts/$(basename "$f" .img)_tb375fc_${TS}_${SHA7}.img"
           done
+          if [ -f "${{ github.workspace }}/vendor_boot_TWRP_64MB.img" ]; then
+            cp "${{ github.workspace }}/vendor_boot_TWRP_64MB.img" \
+               "out_artifacts/vendor_boot_TWRP_64MB_tb375fc_${TS}_${SHA7}.img"
+          fi
           for f in $(find "${{ github.workspace }}/fox/out" -name '*vendor_boot*.zip' 2>/dev/null); do
             cp "$f" "out_artifacts/$(basename "$f" .zip)_tb375fc_${TS}_${SHA7}.zip"
           done

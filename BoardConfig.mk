@@ -63,16 +63,23 @@ BOARD_RAMDISK_USE_LZ4 := true
 
 # ---------------------------------------------------------------- vendor_boot
 BOARD_USES_GENERIC_KERNEL_IMAGE := true
-BOARD_MOVE_RECOVERY_RESOURCES_TO_VENDOR_BOOT := true
-# Do not turn on BOARD_INCLUDE_RECOVERY_RAMDISK_IN_VENDOR_BOOT: that makes AOSP pack
-# two lz4 fragments (an empty platform ramdisk + recovery.cpio), so vendor_ramdisk
-# starts with 02 21 4c 18 twice and single-stream legacy lz4 decompressors fail.
-# With it off, core/Makefile:1620-1628 mkbootfs'es the recovery root directly,
-# giving a single lz4 stream like the stock vendor_boot.
-# BOARD_INCLUDE_RECOVERY_RAMDISK_IN_VENDOR_BOOT := true
-TARGET_NO_RECOVERY := true
-TW_LOAD_VENDOR_BOOT_MODULES := true
+# 2026-11-26 实测结论（按 device 上真正进得了 recovery 的包反推）：
+#   MOVE + TARGET_NO_RECOVERY 的组合会让 TWRP 资源被赶进 vendor ramdisk，而
+#   TARGET_NO_KERNEL 下 $OUT/vendor_ramdisk 并不存在（mkbootfs: cannot open
+#   directory）=> platform 分片只剩 4 字节、recovery 分片退化成 AOSP recovery，
+#   刷进去必定进不了 recovery。
+#   vendor_boot 必须是「两片」：type=1 platform（官方原片，含 222 个 .ko）+
+#   type=2 recovery（TWRP/OF 根文件系统）。platform 只能来自官方 vendor_boot，
+#   由 scripts/splice_platform.py 在打包时拼回去。
+# BOARD_MOVE_RECOVERY_RESOURCES_TO_VENDOR_BOOT := true
+BOARD_INCLUDE_RECOVERY_RAMDISK_IN_VENDOR_BOOT := true
+# TARGET_NO_RECOVERY := true
+# TW_LOAD_VENDOR_BOOT_MODULES := true
 BOARD_USES_RECOVERY_AS_BOOT := false
+
+# 官方 platform 分片（first_stage_ramdisk + lib/modules，25,863,198 B）。
+# 不能由本树生成；打包脚本把它塞进 vendor_boot 的第 0 片。
+BOARD_PREBUILT_PLATFORM_RAMDISK := $(DEVICE_PATH)/prebuilt/platform_ramdisk.lz4
 
 # ---------------------------------------------------------------- partitions
 BOARD_SUPER_PARTITION_SIZE := 9126805504
@@ -185,8 +192,8 @@ TW_INCLUDE_CRYPTO_FBE_ICE := true
 TW_EXCLUDE_LPDUMPLITE := true
 
 # ---------------------------------------------------------------- modules / blobs
-# The 222 modules live in recovery/root/lib/modules and OrangeFox packs them
-# into the recovery ramdisk automatically; there is no prebuilt/modules dir in
-# this tree on purpose. TW_LOAD_VENDOR_MODULES covers the ROM-side modules that
-# the bootloader exposes through vendor_boot for normal-boot paths.
+# recovery/root 里不再放 222 个 .ko：它们由 platform 分片
+# (prebuilt/platform_ramdisk.lz4) 提供，文件名、大小、vermagic
+# 6.1.138-android14-11-g56ef1ebb4dca 已逐一对齐。放进 recovery 分片只会让它
+# 从 ~30 MB 涨到 ~45 MB，64 MiB 塞不下 platform + recovery 两片。
 TW_LOAD_VENDOR_MODULES := true

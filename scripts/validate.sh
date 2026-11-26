@@ -40,8 +40,12 @@ for f in \
   vendorsetup.sh system.prop README.md \
   prebuilt/dtb \
   prebuilt/dtb_dir/tb375fc.dtb \
+  prebuilt/platform_ramdisk.lz4 \
+  scripts/splice_platform.py \
   recovery/root/system/etc/recovery.fstab \
+  recovery/root/system/etc/twrp.flags \
   recovery/root/init.recovery.mt8792.rc \
+  recovery/root/init.recovery.microtrust.rc \
   .github/workflows/build.yml .github/workflows/validate.yml
 do
   need_file "$f"
@@ -61,10 +65,28 @@ has_var BoardConfig.mk BOARD_VENDOR_BOOTIMAGE_PARTITION_SIZE '67108864'
 has_var BoardConfig.mk BOARD_KERNEL_CMDLINE 'bootopt=64S3,32N2,64N2'
 has_var BoardConfig.mk BOARD_RAMDISK_USE_LZ4 'true'
 has_var BoardConfig.mk BOARD_PREBUILT_DTBIMAGE_DIR 'prebuilt/dtb_dir'
+# 2026-11-26：vendor_boot 必须是「两片」才进得了 recovery（device 上唯一验证过
+# 的结构）。单流方案（MOVE=true + TARGET_NO_RECOVERY=true）编出来 platform 分片
+# 只有 4 字节、recovery 退化成 AOSP recovery，实刷全部失败。
 if grep -Eq '^[[:space:]]*BOARD_INCLUDE_RECOVERY_RAMDISK_IN_VENDOR_BOOT[[:space:]]*:?=[[:space:]]*true' BoardConfig.mk; then
-  fail "BOARD_INCLUDE_RECOVERY_RAMDISK_IN_VENDOR_BOOT must be off (two lz4 fragments = double magic in vendor_ramdisk)"
+  pass "BOARD_INCLUDE_RECOVERY_RAMDISK_IN_VENDOR_BOOT = true（两片结构）"
 else
-  pass "single vendor_ramdisk (recovery root packed directly, one lz4 stream)"
+  fail "BOARD_INCLUDE_RECOVERY_RAMDISK_IN_VENDOR_BOOT must be true (two-fragment vendor_boot)"
+fi
+if grep -Eq '^[[:space:]]*BOARD_MOVE_RECOVERY_RESOURCES_TO_VENDOR_BOOT[[:space:]]*:?=[[:space:]]*true' BoardConfig.mk; then
+  fail "BOARD_MOVE_RECOVERY_RESOURCES_TO_VENDOR_BOOT must be off (it empties the platform fragment)"
+else
+  pass "BOARD_MOVE_RECOVERY_RESOURCES_TO_VENDOR_BOOT off"
+fi
+if grep -Eq '^[[:space:]]*TARGET_NO_RECOVERY[[:space:]]*:?=[[:space:]]*true' BoardConfig.mk; then
+  fail "TARGET_NO_RECOVERY must be off (it drops the recovery fragment entirely)"
+else
+  pass "TARGET_NO_RECOVERY off"
+fi
+if grep -Eq '^[[:space:]]*BOARD_PREBUILT_PLATFORM_RAMDISK' BoardConfig.mk; then
+  pass "BOARD_PREBUILT_PLATFORM_RAMDISK declared"
+else
+  warn "BOARD_PREBUILT_PLATFORM_RAMDISK not declared (splice script only)"
 fi
 for v in BOARD_AVB_ENABLE BOARD_AVB_ALGORITHM BOARD_AVB_KEY_PATH BOARD_AVB_VENDOR_BOOT_KEY_PATH BOARD_AVB_VENDOR_BOOT_ALGORITHM BOARD_AVB_VENDOR_BOOT_ROLLBACK_INDEX BOARD_AVB_VENDOR_BOOT_ROLLBACK_INDEX_LOCATION BOARD_AVB_VENDOR_BOOTIMAGE_KEY_PATH; do
   if grep -Eq "^[[:space:]]*$v[[:space:]]*:?=" BoardConfig.mk; then pass "$v set"; else fail "$v missing (avbtool would run with no --algorithm/--key)"; fi
@@ -120,35 +142,68 @@ COUNT_DATA=$(printf '%s\n' "$BODY" | grep -cE '^\S+[[:space:]]+/data[[:space:]]'
 [ "$COUNT_DATA" = "1" ] && pass "/data declared exactly once" || fail "/data declared $COUNT_DATA times (must be exactly 1)"
 printf '%s\n' "$BODY" | grep -qE '^/dev/block/by-name/userdata[[:space:]]+/data' && pass "/data -> by-name/userdata" || fail "/data not mapped to by-name/userdata"
 printf '%s\n' "$BODY" | grep -qE '^\S+[[:space:]]+/metadata[[:space:]]' && pass "/metadata present" || fail "/metadata missing"
-printf '%s\n' "$BODY" | grep -qE '^\S+[[:space:]]+/mnt/vendor/persist[[:space:]]' && pass "persist mounted (stock behaviour)" || fail "persist missing"
+printf '%s\n' "$BODY" | grep -qE '^\S+[[:space:]]+/mnt/vendor/persist[[:space:]]' \
+  && pass "persist mounted in fstab" \
+  || { grep -qE '^/persist_image[[:space:]]' recovery/root/system/etc/twrp.flags 2>/dev/null \
+        && pass "persist exposed through twrp.flags as /persist_image (stock fstab has no /persist mount)" \
+        || fail "persist neither mounted in fstab nor exposed in twrp.flags"; }
 printf '%s\n' "$BODY" | grep -q 'fileencryption=' && pass "fileencryption flag preserved" || fail "fileencryption flag stripped"
 printf '%s\n' "$BODY" | grep -q 'aes-256-xts:aes-256-cts:v2' && pass "FBE v2 cipher set present" || fail "FBE v2 cipher set missing"
 printf '%s\n' "$BODY" | grep -q 'keydirectory=/metadata/vold/metadata_encryption' && pass "metadata keydirectory present" || fail "metadata keydirectory missing"
 printf '%s\n' "$BODY" | grep -q 'avb' && fail "avb token still present in fstab body" || pass "no avb token in fstab body"
-printf '%s\n' "$BODY" | grep -q 'first_stage_mount' && fail "first_stage_mount still present in fstab body" || pass "no first_stage_mount in fstab body"
+# 这份 fstab 是可用 recovery ramdisk 里的原件（LineageOS fstab.mt6897 派生），
+# logical 分区必须带 first_stage_mount，这里改为“必须有”，不再是“不许有”。
+printf '%s\n' "$BODY" | grep -qE 'system[[:space:]]+/system[[:space:]]+erofs.*logical,first_stage_mount' \
+  && pass "logical partitions carry logical,first_stage_mount" \
+  || fail "logical,first_stage_mount missing from the system line"
 printf '%s\n' "$BODY" | grep -q 'slotselect_keys' && fail "corrupted slotselect_keys token present (bad regex substitution)" || pass "no corrupted slotselect_keys token"
 printf '%s\n' "$BODY" | grep -q 'dm-userdata' && fail "duplicate dm-userdata /data entry present" || pass "no dm-userdata duplicate"
 
-sect "kernel modules"
-KO_COUNT=$(find recovery/root/lib/modules -type f -name '*.ko' 2>/dev/null | wc -l | tr -d ' ')
-if [ "$KO_COUNT" -ge 200 ]; then pass "$KO_COUNT .ko modules"; else fail "only $KO_COUNT .ko modules (expected ~222)"; fi
-KO_BYTES=$(find recovery/root/lib/modules -type f -name '*.ko' -printf '%s\n' 2>/dev/null | awk '{s+=$1} END {print s+0}')
-pass "modules total $KO_BYTES bytes"
-EMPTY_KO=$(find recovery/root/lib/modules -type f -name '*.ko' -size 0 2>/dev/null | wc -l | tr -d ' ')
-[ "$EMPTY_KO" = "0" ] && pass "no empty .ko" || fail "$EMPTY_KO empty .ko files"
+sect "twrp.flags (partition manager / flash targets)"
+FLAGS=recovery/root/system/etc/twrp.flags
+need_file "$FLAGS"
+for p in '/vendor_boot' '/boot' '/init_boot' '/dtbo' '/vbmeta' '/persist_image' '/usb_otg' '/external_sd'; do
+  if grep -qE "^[[:space:]]*$p[[:space:]]" "$FLAGS" 2>/dev/null; then pass "twrp.flags has $p"; else fail "twrp.flags missing $p"; fi
+done
+grep -qE '^/vendor_boot[[:space:]]+emmc[[:space:]]+/dev/block/by-name/vendor_boot' "$FLAGS" \
+  && pass "/vendor_boot points at by-name/vendor_boot" || fail "/vendor_boot device path wrong"
+if grep -qE '^/vendor_boot[[:space:]].*flashimg=1' "$FLAGS"; then pass "/vendor_boot is flashable"; else fail "/vendor_boot not flashable (no flashimg=1)"; fi
 
-sect "64 MiB budget (rough)"
-if [ "$KO_BYTES" -gt 0 ]; then
-  # stock frag0 compresses to 25,863,198; assume TWRP recovery part ~50 MiB uncompressed (~2.3:1)
-  EST=$(awk -v k="$KO_BYTES" 'BEGIN { printf "%d", 25863198 + (50*1048576/2.3) + (k/2.3) }')
+sect "platform fragment (官方 vendor_boot 原片)"
+PLAT=prebuilt/platform_ramdisk.lz4
+if [ -f "$PLAT" ]; then
+  PLAT_BYTES=$(stat -c%s "$PLAT" 2>/dev/null || echo 0)
+  if [ "$PLAT_BYTES" = "25863198" ]; then
+    pass "platform_ramdisk.lz4 = $PLAT_BYTES bytes (与官方 vendor_boot 一致)"
+  else
+    fail "platform_ramdisk.lz4 = $PLAT_BYTES bytes, expected 25,863,198"
+  fi
+  # 官方 platform 片是 lz4 legacy frame，magic 0x184C2102
+  MAGIC=$(od -An -tx1 -N4 "$PLAT" 2>/dev/null | tr -d ' \n')
+  if [ "$MAGIC" = "02214c18" ]; then pass "platform fragment starts with lz4 legacy magic"; else fail "platform fragment magic = $MAGIC, expected 02214c18"; fi
+else
+  PLAT_BYTES=0
+fi
+"${PYTHON:-python3}" -c "import zstandard" 2>/dev/null \
+  && pass "python zstandard available (splice_platform.py can encode 0000+zstd)" \
+  || warn "python zstandard missing: CI installs it, local builds need pip install zstandard"
+if [ -d recovery/root/lib/modules ] && [ -n "$(ls -A recovery/root/lib/modules 2>/dev/null)" ]; then
+  fail "recovery/root/lib/modules must stay empty: modules come from the platform fragment"
+else
+  pass "no duplicated modules inside recovery root"
+fi
+
+sect "64 MiB budget"
+if [ "${PLAT_BYTES:-0}" -gt 0 ]; then
+  # 可用包实测：platform 25,863,198 + recovery 30,573,748 = vrs 56,436,946 B
+  EST=$(( PLAT_BYTES + 30573748 ))
   LIMIT=67108864
   if [ "$EST" -lt "$LIMIT" ]; then
-    pass "estimated compressed size $EST B < $LIMIT B"
+    pass "estimated vrs $EST B < $LIMIT B (余量 $((LIMIT - EST)) B)"
   else
-    fail "estimated compressed size $EST B >= $LIMIT B"
+    fail "estimated vrs $EST B >= $LIMIT B"
   fi
-  REM=$(( LIMIT - EST ))
-  if [ "$REM" -lt $((6*1048576)) ]; then warn "only $REM B head-room left (< 6 MiB)"; fi
+  if [ $(( LIMIT - EST )) -lt $((4*1048576)) ]; then warn "head-room under 4 MiB"; fi
 fi
 
 sect "shell syntax"

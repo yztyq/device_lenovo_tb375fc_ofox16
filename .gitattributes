@@ -1,0 +1,19 @@
+# 该仓库里混着 AOSP 设备树文本和 recovery 分片里的二进制，换行符必须固定，
+# 否则 Windows 上 autocrlf 会把 .sh / .rc 写成 CRLF，到设备上 sh 直接报
+# "bad interpreter" 或语法错。
+* text=auto eol=lf
+
+*.sh   text eol=lf
+*.rc   text eol=lf
+*.mk   text eol=lf
+*.yml  text eol=lf
+
+# 二进制：禁止任何文本转换与 diff
+*.img   binary
+*.lz4   binary
+*.ko    binary
+*.ta    binary
+*.bin   binary
+*.dtb   binary
+*.zip   binary
+vendor_fbe.zip binary
