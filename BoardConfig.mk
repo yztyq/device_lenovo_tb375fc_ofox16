@@ -49,9 +49,17 @@ BOARD_DTB_SIZE := 411876
 # known rule to make it". The single .dtb below is the stock dtb segment,
 # 411,876 B, MD5 c04d985375c5ed4196d3df00a28d370d.
 BOARD_PREBUILT_DTBIMAGE_DIR := $(DEVICE_PATH)/prebuilt/dtb_dir
-BOARD_VENDOR_CMDLINE := bootopt=64S3,32N2,64N2
+# AOSP16 has no BOARD_VENDOR_CMDLINE: board_config.mk:317 sets
+# INTERNAL_KERNEL_CMDLINE := $(BOARD_KERNEL_CMDLINE) and core/Makefile:1668
+# passes it as --vendor_cmdline to mkbootimg for vendor_boot. The stock vendor_boot
+# header stores exactly this string (read from the image, cmdline[2048] at offset 28).
+BOARD_KERNEL_CMDLINE := bootopt=64S3,32N2,64N2
 BOARD_VENDOR_BOOTIMAGE_PARTITION_SIZE := 67108864
 BOARD_INCLUDE_DTB_IN_BOOTIMG := true
+# The stock vendor_ramdisk is an LZ4 legacy frame (first bytes at page offset 4096:
+# 02 21 4c 18 => magic 0x184C2102), and 60+ MB of modules will not fit the 64 MiB
+# vendor_boot partition unless compressed the same way. core/Makefile:1077/5923.
+BOARD_RAMDISK_USE_LZ4 := true
 
 # ---------------------------------------------------------------- vendor_boot
 BOARD_USES_GENERIC_KERNEL_IMAGE := true
