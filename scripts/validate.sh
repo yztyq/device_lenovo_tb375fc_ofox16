@@ -186,9 +186,9 @@ if [ -f "$PLAT" ]; then
 else
   PLAT_BYTES=0
 fi
-"${PYTHON:-python3}" -c "import zstandard" 2>/dev/null \
-  && pass "python zstandard available (splice_platform.py can encode 0000+zstd)" \
-  || warn "python zstandard missing: CI installs it, local builds need pip install zstandard"
+"${PYTHON:-python3}" -c "import lz4.block, zstandard" 2>/dev/null \
+  && pass "python lz4 + zstandard available (splice encodes lz4 legacy; zstd only decodes old parts)" \
+  || warn "python lz4/zstandard missing: CI installs both, local builds need pip install lz4 zstandard"
 if [ -d recovery/root/lib/modules ] && [ -n "$(ls -A recovery/root/lib/modules 2>/dev/null)" ]; then
   fail "recovery/root/lib/modules must stay empty: modules come from the platform fragment"
 else
@@ -197,8 +197,9 @@ fi
 
 sect "64 MiB budget"
 if [ "${PLAT_BYTES:-0}" -gt 0 ]; then
-  # 可用包实测：platform 25,863,198 + recovery 30,573,748 = vrs 56,436,946 B
-  EST=$(( PLAT_BYTES + 30573748 ))
+  # 2026-11-26 本机实测（recovery 用 lz4 legacy + 瘦身 10 个文件）：
+  #   platform 25,863,198 + recovery 39,593,450 = vrs 65,456,648 B，余量 1.65 MiB
+  EST=$(( PLAT_BYTES + 39593450 ))
   LIMIT=67108864
   if [ "$EST" -lt "$LIMIT" ]; then
     pass "estimated vrs $EST B < $LIMIT B (余量 $((LIMIT - EST)) B)"
