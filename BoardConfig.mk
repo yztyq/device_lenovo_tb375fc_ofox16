@@ -64,7 +64,12 @@ BOARD_RAMDISK_USE_LZ4 := true
 # ---------------------------------------------------------------- vendor_boot
 BOARD_USES_GENERIC_KERNEL_IMAGE := true
 BOARD_MOVE_RECOVERY_RESOURCES_TO_VENDOR_BOOT := true
-BOARD_INCLUDE_RECOVERY_RAMDISK_IN_VENDOR_BOOT := true
+# Do not turn on BOARD_INCLUDE_RECOVERY_RAMDISK_IN_VENDOR_BOOT: that makes AOSP pack
+# two lz4 fragments (an empty platform ramdisk + recovery.cpio), so vendor_ramdisk
+# starts with 02 21 4c 18 twice and single-stream legacy lz4 decompressors fail.
+# With it off, core/Makefile:1620-1628 mkbootfs'es the recovery root directly,
+# giving a single lz4 stream like the stock vendor_boot.
+# BOARD_INCLUDE_RECOVERY_RAMDISK_IN_VENDOR_BOOT := true
 TARGET_NO_RECOVERY := true
 TW_LOAD_VENDOR_BOOT_MODULES := true
 BOARD_USES_RECOVERY_AS_BOOT := false
