@@ -52,33 +52,49 @@ jobs:
 
       - name: Set up swap and zram
         run: |
-          # Run #20 (2026-11-26) OOM: soong_build anon-rss 13.4 GiB, 20 GiB swapfile
-          # 100 % consumed (`Free swap = 0kB`), cgroup killed it -> exit 143.
-          # 磁盘只剩 ~40 GiB（repo sync 要 85+ GiB），不能再加大 swapfile，
-          # 所以用 zram（压缩内存，不落地磁盘）兜住解析 Android.bp 的峰值。
+          # Run #21 (2026-11-27) 仍然 OOM: soong_build anon-rss 14.5 GiB。
+          # 真因不是"swap 不够大"，而是这台上 /swapfile 只有 3.0 GiB 且被占用：
+          #   rm: cannot remove '/swapfile': Operation not permitted
+          #   swapon: /swapfile: Device or resource busy
+          # 于是 20 GiB swapfile 根本没建起来（SwapTotal 一直 3 GiB），
+          # 同时 zram 内核模块缺失（Module zram not found / 6.8.0-1073-azure）。
+          # 这一步的正确顺序：先 swapoff 掉旧 swapfile -> 删掉 -> 再建 24 GiB。
           free -h
-          sudo modprobe zram || true
-          if [ -b /dev/zram0 ]; then
-            sudo swapoff /dev/zram0 || true
-            # 顺序不能反：先选压缩算法，再写 disksize（写完后 sysfs 不能再改算法）
-            echo zstd | sudo tee /sys/block/zram0/comp_algorithm >/dev/null 2>&1 || true
-            echo 12G  | sudo tee /sys/block/zram0/disksize        >/dev/null 2>&1 || true
-            sudo mkswap /dev/zram0 || true
-            sudo swapon -p 100 /dev/zram0 || true
-            echo "zram: $(cat /sys/block/zram0/disksize 2>/dev/null) B, algo=$(cat /sys/block/zram0/comp_algorithm 2>/dev/null)"
+          sudo swapoff -a || true
+          sleep 2
+          # 旧的 /swapfile 可能带 immutable 属性，先摘掉再删
+          sudo chattr -i /swapfile 2>/dev/null || true
+          sudo rm -f /swapfile || true
+          if [ -e /swapfile ]; then
+            echo "旧 /swapfile 删不掉，直接换路径"
+            SWAPFILE=/swapfile2
           else
-            echo "zram module unavailable, relying on the swapfile only"
+            SWAPFILE=/swapfile
+          fi
+          sudo fallocate -l 24G "$SWAPFILE" 2>/dev/null || \
+            sudo dd if=/dev/zero of="$SWAPFILE" bs=1M count=24576 status=none
+          sudo chmod 600 "$SWAPFILE"
+          sudo mkswap "$SWAPFILE"
+          sudo swapon -p 10 "$SWAPFILE"
+          # zram 只是加分项：内核有就挂 8G，没有就算了
+          sudo modprobe zram 2>/dev/null || true
+          if [ -b /dev/zram0 ]; then
+            sudo swapoff /dev/zram0 2>/dev/null || true
+            echo zstd | sudo tee /sys/block/zram0/comp_algorithm >/dev/null 2>&1 || true
+            echo 8G   | sudo tee /sys/block/zram0/disksize        >/dev/null 2>&1 || true
+            sudo mkswap /dev/zram0 2>/dev/null || true
+            sudo swapon -p 100 /dev/zram0 2>/dev/null || true
           fi
           SWAP_KB=$(awk '/^SwapTotal/ {print $2}' /proc/meminfo)
-          echo "swap+zram total: ${SWAP_KB:-0} kB"
-          if [ "${SWAP_KB:-0}" -lt 28000000 ]; then
-            sudo rm -f /swapfile || true
-            sudo fallocate -l 20G /swapfile || sudo dd if=/dev/zero of=/swapfile bs=1M count=20480 status=none || true
-            sudo chmod 600 /swapfile || true
-            sudo mkswap /swapfile || true
-            sudo swapon -p 10 /swapfile || true
+          echo "swap total: ${SWAP_KB:-0} kB"
+          # 少于 20 GiB 就直接失败退出，别让后面的构建白烧几十分钟
+          if [ "${SWAP_KB:-0}" -lt 20000000 ]; then
+            echo "swap 没配上，直接停" >&2
+            free -h; swapon --show; df -h /
+            exit 1
           fi
           free -h
+          swapon --show
           df -h /
           exit 0
 
