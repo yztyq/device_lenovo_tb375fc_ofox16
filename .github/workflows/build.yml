@@ -50,25 +50,36 @@ jobs:
           sudo apt-get clean
           df -h /
 
-      - name: Set up swap
+      - name: Set up swap and zram
         run: |
-          # Run #5 died with "the hosted runner lost communication with the
-          # server" after ~50 min of building and never uploaded a build log,
-          # i.e. the host itself gave up (OOM or full disk), not the compiler.
+          # Run #20 (2026-11-26) OOM: soong_build anon-rss 13.4 GiB, 20 GiB swapfile
+          # 100 % consumed (`Free swap = 0kB`), cgroup killed it -> exit 143.
+          # 磁盘只剩 ~40 GiB（repo sync 要 85+ GiB），不能再加大 swapfile，
+          # 所以用 zram（压缩内存，不落地磁盘）兜住解析 Android.bp 的峰值。
           free -h
+          sudo modprobe zram || true
+          if [ -b /dev/zram0 ]; then
+            sudo swapoff /dev/zram0 || true
+            # 顺序不能反：先选压缩算法，再写 disksize（写完后 sysfs 不能再改算法）
+            echo zstd | sudo tee /sys/block/zram0/comp_algorithm >/dev/null 2>&1 || true
+            echo 12G  | sudo tee /sys/block/zram0/disksize        >/dev/null 2>&1 || true
+            sudo mkswap /dev/zram0 || true
+            sudo swapon -p 100 /dev/zram0 || true
+            echo "zram: $(cat /sys/block/zram0/disksize 2>/dev/null) B, algo=$(cat /sys/block/zram0/comp_algorithm 2>/dev/null)"
+          else
+            echo "zram module unavailable, relying on the swapfile only"
+          fi
           SWAP_KB=$(awk '/^SwapTotal/ {print $2}' /proc/meminfo)
-          echo "existing swap: ${SWAP_KB:-0} kB"
-          if [ "${SWAP_KB:-0}" -lt 20000000 ]; then
-            sudo swapoff -a || true
+          echo "swap+zram total: ${SWAP_KB:-0} kB"
+          if [ "${SWAP_KB:-0}" -lt 28000000 ]; then
             sudo rm -f /swapfile || true
             sudo fallocate -l 20G /swapfile || sudo dd if=/dev/zero of=/swapfile bs=1M count=20480 status=none || true
             sudo chmod 600 /swapfile || true
             sudo mkswap /swapfile || true
-            sudo swapon /swapfile || true
-          else
-            echo "runner already has enough swap, skipping"
+            sudo swapon -p 10 /swapfile || true
           fi
           free -h
+          df -h /
           exit 0
 
       - name: Install build dependencies
@@ -313,3 +324,4 @@ jobs:
             out_artifacts/*.img
             out_artifacts/build_info.txt
           token: ${{ secrets.GITHUB_TOKEN }}
+
